@@ -1,0 +1,94 @@
+version: '3.5'
+ 
+services:
+  dd-agent-dogfood-jmx-di:
+    container_name: dd-agent-dogfood-jmx-di
+    image: gcr.io/datadoghq/agent:latest-jmx
+    environment:
+      - DD_HOSTNAME=datadog
+      - DD_API_KEY
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true 
+      - DD_PROCESS_AGENT_ENABLED=true 
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC="true" 
+      - DD_LOG_LEVEL=debug
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+      - DD_CONTAINER_EXCLUDE_LOGS="name:datadog-agent"
+      - SD_JMX_ENABLE=true
+      - DD_REMOTE_CONFIGURATION_ENABLED=true
+      - DD_REMOTE_CONFIGURATION_KEY=DDRCM_QORW64THZYAAGQKLUJSGHLDVOMYS44DSN5SC4ZDPM6RWWZLZ3EUDKZRYGQ4DGNJQMQ2WGNJTGMZDEMBRMIYTINJSMVSDAMRTGNTDKNDCGA4DOMRYHA2A
+    ports:
+     - "8125:8125"
+     - "8126:8126"
+    volumes:
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - app
+   
+
+  cass:
+    build:
+      context: .
+      dockerfile: Dockerfiles/Dockerfile.cassandra
+    ports:
+     - "9042:9042"
+     - "9160:9160"
+     - "7199:7199"
+    volumes:
+      - $PWD/Dockerfiles/cassandra.yaml:/opt/cassandra/conf/cassandra.yaml
+    depends_on:
+      - "dd-agent-dogfood-jmx-di"
+    container_name: cass
+    image: pejese/cassandra:v1
+    hostname: cassandra
+    networks:
+      - app
+
+
+  springfront:
+    build:
+      context: .
+      dockerfile: Dockerfiles/Dockerfile.springfront
+    container_name: springfront
+    image: 'pejese/springfront:v0'
+    environment:
+            - JAVA_TOOL_OPTIONS=-javaagent:/root/dd-java-agent.jar -Ddd.agent.host=dd-agent-dogfood-jmx-di -Ddd.service=springfront -Ddd.env=dev -Ddd.version=12 -Ddd.trace.sample.rate=1 -Ddd.logs.injection=true -Ddd.profiling.enabled=true -XX:FlightRecorderOptions=stackdepth=256 -Ddd.trace.http.client.split-by-domain=true -Ddd.dynamic.instrumentation.enabled=true -Ddd.remote_config.enabled=true -Ddd.tags=git.commit.sha:9383abbd845cec77c4c65873f6d981bc51d1ead7,git.repository_url:github.com/ptabasso2/spring-front,env:dev
+            - URL=http://springback:8088
+    hostname: springfront
+    ports:
+          - "8080:8080"
+    volumes:
+      - $PWD/dd-java-agent.jar:/root/dd-java-agent.jar
+    depends_on:
+      - "cass"
+    networks:
+      - app
+
+
+  springback:
+    build:
+      context: .
+      dockerfile: Dockerfiles/Dockerfile.springback
+    container_name: springback
+    image: 'pejese/springback:v0'
+    environment:
+            - JAVA_TOOL_OPTIONS=-javaagent:/root/dd-java-agent.jar -Ddd.agent.host=dd-agent-dogfood-jmx-di -Ddd.service=springback -Ddd.env=dev -Ddd.version=12 -Ddd.trace.sample.rate=1 -Ddd.logs.injection=true -Ddd.profiling.enabled=true -XX:FlightRecorderOptions=stackdepth=256 -Ddd.trace.http.client.split-by-domain=true -Ddd.dynamic.instrumentation.enabled=true -Ddd.remote_config.enabled=true -Ddd.tags=git.commit.sha:17c7e82807d1ca54ff5aaf032a5aca2b52beab3f,git.repository_url:github.com/ptabasso2/spring-back,env:dev
+    hostname: springback
+    ports:
+          - "8088:8088"
+    volumes:
+      - $PWD/dd-java-agent.jar:/root/dd-java-agent.jar
+    depends_on:
+      - "cass"
+    networks:
+      - app
+
+
+networks:
+  app:
+    external: false
+    driver: bridge
+    name: app

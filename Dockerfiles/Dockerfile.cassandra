@@ -1,0 +1,20 @@
+# docker run to be run from .. (context). Directory containing the "Dockerfiles" directory
+
+# Image build & push instructions
+# [root@pt-instance-7:~/rest]$ docker build -f Dockerfile.cassandra -t pejese/cassandra:v1 .
+# [root@pt-instance-7:~/rest]$ docker run -it -p9042:9042/tcp -p9160:9160/tcp -p7199:7199/tcp -v /root/rest/cassandra.yaml:/opt/cassandra/conf/cassandra.yaml -d --name testcass -h cassandra pejese/cassandra:v1
+# [root@pt-instance-7:~/rest]$ docker push pejese/cassandra:v1
+
+
+FROM cassandra 
+
+COPY Dockerfiles/start.sh .
+COPY Dockerfiles/cassandra.yaml /opt/cassandra/conf/cassandra.yaml
+
+
+ENV CASSANDRA_START_RPC=true
+ENV LOCAL_JMX=no
+
+#EXPOSE 9042 9160 7199
+
+CMD ["./start.sh"]
