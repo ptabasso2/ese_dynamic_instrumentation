@@ -1,154 +1,418 @@
-# Tutorial APM Java SpringBoot, Kafka, Cassandra on k8s
+## Dynamic Instrumentation, Remote configuration and source code instrumentation hands-on lab
 
 [![Sonarcloud Status](https://sonarcloud.io/api/project_badges/measure?project=com.codenotfound%3Aspring-kafka-hello-world&metric=alert_status)](https://sonarcloud.io/dashboard?id=com.codenotfound%3Aspring-kafka-hello-world)
 
-
-A detailed step-by-step tutorial on how to implement an Apache Kafka Consumer and Producer, a cassandra DB using Spring Kafka and Spring Boot in a kubernetes infrastructure (GKE)
-<br>In this tutorial we will also enable distributed tracing using the Datadog java agent (automatic instrumentation).
-This tutorial assumes that 
-+ You already have access to a kubernetes cluster. The example below has been tested on GKE. But you can replicate the same instructions on any type of clusters managed or not.
-+ The Kubernetes Datadog cluster agent deployed (Either through a Daemonset or Helm). Note that there those steps are also described below
-  
-
-### _Preliminary tasks_
-
-
-**Deploy the Datadog Agent and the cluster Agent**
-
-```
-COMP10619:pejman.tabassomi$ helm install ddagent -f datadog/helm/values.yaml --set datadog.apiKey=687xxxxxxxxxxxxxxxxxxxxx3c2 datadog/datadog --set targetSystem=linux
-NAME: ddagent
-LAST DEPLOYED: Thu Mar 10 14:43:48 2022
-NAMESPACE: default
-STATUS: deployed
-REVISION: 1
-TEST SUITE: None
-NOTES:
-Datadog agents are spinning up on each node in your cluster. After a few
-minutes, you should see your agents starting in your event stream:
-    https://app.datadoghq.com/event/stream
-
-The Datadog Agent is listening on port 8126 for APM service.
-
-#################################################################
-####               WARNING: Deprecation notice               ####
-#################################################################
-
-The option `datadog.apm.enabled` is deprecated, please use `datadog.apm.portEnabled` to enable TCP communication to the trace-agent.
-The option `datadog.apm.socketEnabled` is enabled by default and can be used to rely on unix socket or name-pipe communication.
-```
-
-**Checking the deployment**
-
-
-Running the following will display the set of manifest files that will be used to create the application on the cluster.
-
-```
-COMP10619:pejman.tabassomi$ helm ls
-NAME   	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART         	APP VERSION
-ddagent	default  	1       	2022-03-10 14:43:48.707422 +0100 CET	deployed	datadog-2.30.5	7    
-
-COMP10619:helm pejman.tabassomi$ kubectl get svc
-NAME                            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
-ddagent-datadog-cluster-agent   ClusterIP   10.116.1.167   <none>        5005/TCP   34s
-ddagent-kube-state-metrics      ClusterIP   10.116.3.82    <none>        8080/TCP   34s
-kubernetes                      ClusterIP   10.116.0.1     <none>        443/TCP    48d
-
-COMP10619:helm pejman.tabassomi$ kubectl get pods
-NAME                                             READY   STATUS    RESTARTS   AGE
-ddagent-datadog-4wf2l                            4/4     Running   0          38s
-ddagent-datadog-cluster-agent-59986f5958-m9xft   1/1     Running   0          38s
-ddagent-datadog-clusterchecks-7c8dcb4dd9-5pqgd   0/1     Running   0          37s
-ddagent-datadog-clusterchecks-7c8dcb4dd9-sttgr   1/1     Running   0          37s
-ddagent-datadog-m9bxd                            3/4     Running   0          38s
-ddagent-datadog-xkkfg                            3/4     Running   0          38s
-ddagent-kube-state-metrics-787986db96-cz7xp      1/1     Running   0          38s
-
-```
-
-**Deploying the application**
-
-
-1. Deploying the required k8s services
-
-```
-COMP10619:k8s pejman.tabassomi$ kubectl apply -f svc.yaml 
-service/kafka created
-service/springkafkaprod created
-service/zookeeper created
-service/cassandra created
-```
-
-```
-COMP10619:k8s pejman.tabassomi$ kubectl get svc
-NAME                            TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)                      AGE
-cassandra                       ClusterIP      10.116.0.16    <none>        9042/TCP                     38s
-ddagent-datadog-cluster-agent   ClusterIP      10.116.1.167   <none>        5005/TCP                     2m24s
-ddagent-kube-state-metrics      ClusterIP      10.116.3.82    <none>        8080/TCP                     2m24s
-kafka                           ClusterIP      10.116.6.71    <none>        9092/TCP                     38s
-kubernetes                      ClusterIP      10.116.0.1     <none>        443/TCP                      48d
-springkafkaprod                 LoadBalancer   10.116.10.3    34.89.190.246 8088:32496/TCP               38s
-zookeeper                       ClusterIP      10.116.10.34   <none>        2181/TCP,2888/TCP,3888/TCP   38s
-```
-
-2. Deploying k8s deployments
-
-
-```
-COMP10619:k8s pejman.tabassomi$ kubectl apply -f depl.yaml 
-deployment.apps/zookeeper created
-deployment.apps/kafka created
-deployment.apps/springkafkacons created
-deployment.apps/springkafkaprod created
-deployment.apps/cassandra created
-```
-
-
-As we can see, *zookeeper*, *kafka*, *springkafka* and *cassandra* are up and running.
-<br>The next list shows up the running pods and we can see that the three components (zookeeper, kafka and spring) are also running. 
+### Introduction
  
+The sections of this tutorial are structured as follows
+
+* Goal
+* Pre-requisites
+* Clone the repository
+* Directory structure of the project
+* Overview of the application
+* Building the docker images and run the application - before phase
+* Dynamic Instrumentation (DI), Remote configuration (RC) and Source code integration (SCI) set-up
+* Building the docker images and run the application - after phase
+* Starting and running the application
+* Configuring probes & results
+* Conclusion
+
+In each section, we'll describe the required steps to take in order to reach the goal.
+
+
+### Goal of this lab
+
+The purpose of this lab is to help familiarizing and practising the various steps required to set up and use the Dynamic Instrumentation feature.
+
+<p align="left">
+  <img src="img/Mqtt1.png" width="850" />
+</p>
+
+### Pre-requisites
+
++ About 90 minutes
++ Git client
++ A Datadog sandbox account with a valid API key
++ Your favorite text editor or IDE (Ex Sublime Text, Atom, vscode...)
++ Docker and Docker compose
+
+
+### Clone the repository
+
+<pre style="font-size: 12px">
+COMP10619:~ pejman.tabassomi$ git clone https://github.com/ptabasso2/ese_dynamic_instrumentation
+</pre>
+
+### Directory structure of the project
+
+The example below is the structure after having clone the project.
+
+```shell
+COMP10619:ese pejman.tabassomi$ tree
+.
+├── Dockerfiles
+│   ├── Dockerfile.cassandra
+│   ├── Dockerfile.springback
+│   ├── Dockerfile.springfront
+│   ├── cassandra.yaml
+│   └── start.sh
+├── README.md
+├── dd-java-agent.jar
+├── docker-compose.yml
+├── img
+├── springback
+│   ├── build.gradle
+│   ├── gradle
+│   │   └── wrapper
+│   │       ├── gradle-wrapper.jar
+│   │       └── gradle-wrapper.properties
+│   ├── gradlew
+│   ├── logs
+│   │   └── springback.log
+│   ├── settings.gradle
+│   └── src
+│       └── main
+│           ├── java
+│           │   └── com
+│           │       └── datadog
+│           │           └── pej
+│           │               └── back
+│           │                   ├── BasicController.java
+│           │                   ├── Quote.java
+│           │                   ├── SpringBackApplication.java
+│           │                   ├── Value.java
+│           │                   ├── model
+│           │                   │   └── Guide.java
+│           │                   └── repository
+│           │                       └── GuideRepository.java
+│           └── resources
+│               ├── application.properties
+│               └── application.yml
+└── springfront
+    ├── build.gradle
+    ├── gradle
+    │   └── wrapper
+    │       ├── gradle-wrapper.jar
+    │       └── gradle-wrapper.properties
+    ├── gradlew
+    ├── settings.gradle
+    └── src
+        └── main
+            ├── java
+            │   └── com
+            │       └── datadog
+            │           └── pej
+            │               └── front
+            │                   ├── BasicController.java
+            │                   ├── Quote.java
+            │                   ├── SpringFrontApplication.java
+            │                   └── Value.java
+            └── resources
+                └── application.yml
+
 ```
-COMP10619:k8s pejman.tabassomi$ kubectl get pods
-NAME                                             READY   STATUS    RESTARTS   AGE
-cassandra-8467974db7-ddftd                       1/1     Running   0          22s
-ddagent-datadog-4wf2l                            4/4     Running   0          2m15s
-ddagent-datadog-cluster-agent-59986f5958-m9xft   1/1     Running   0          2m15s
-ddagent-datadog-clusterchecks-7c8dcb4dd9-5pqgd   1/1     Running   0          2m14s
-ddagent-datadog-clusterchecks-7c8dcb4dd9-sttgr   1/1     Running   0          2m14s
-ddagent-datadog-m9bxd                            4/4     Running   0          2m15s
-ddagent-datadog-xkkfg                            4/4     Running   0          2m15s
-ddagent-kube-state-metrics-787986db96-cz7xp      1/1     Running   0          2m15s
-kafka-7b6df4c7cd-nf227                           1/1     Running   0          22s
-springkafkacons-5846bbdcc-trcg7                  1/1     Running   0          22s
-springkafkaprod-574b8f7c68-qccr4                 1/1     Running   0          22s
-zookeeper-748c5db78d-88xpg                       1/1     Running   0          22s
+
+The main components of this project can be described as follows:
++ Two distinct microservices (`springfront` and `springback`) communicating with each other through Rest calls </br>
++ The various docker files needed to build the images and the docker-compose configuration to spin up the four containers (`dd-agent`, `springfront`, `springback` and `cassandra`).
+
+
+### Building the docker images and run the application - before phase
+
+**Building the images**
+
+For the sake of effectiveness, you will find the required images preloaded into the following registry https://hub.docker.com/repositories/pejese </br>
+If you ever need to change the Dockerfiles and rebuild the images you may consider the following steps:
+
+First change the `image` key in the `docker-compose.yml` file to specify the your repository details.
+
+
+````shell
+[root@pt-instance-7:~/rest]$ docker-compose build springfront
+Building springfront
+Sending build context to Docker daemon  113.8MB
+Step 1/9 : FROM adoptopenjdk/openjdk11:ubuntu-nightly-slim
+ ---> 86b175442692
+Step 2/9 : ENV PS1A="[\[\e[1m\]\[\e[38;5;46m\]\u\[\e[0m\]@\h:\[\e[1m\]\[\e[38;5;21m\]\w\[\e[0m\]]$ "
+ ---> Using cache
+ ---> 9dcefd8d3438
+Step 3/9 : ENV TZ="Europe/Paris"
+ ---> Using cache
+ ---> bcb97c6f5f66
+Step 4/9 : RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+ ---> Using cache
+ ---> a8b6630325b4
+Step 5/9 : RUN apt update  && apt -y install net-tools iputils-ping curl vim procps netcat wget gnupg2 apt-transport-https sudo lsof unzip git  && echo "alias ll='ls -lrt'" >> /root/.bashrc && echo 'PS1=$PS1A' >> ~/.bashrc && echo 'HISTFILESIZE=20000' >> ~/.bashrc && echo 'HISTSIZE=10000' >> ~/.bashrc
+ ---> Using cache
+ ---> 64764127c101
+Step 6/9 : WORKDIR /app
+ ---> Using cache
+ ---> c4eba2e16573
+Step 7/9 : COPY springfront/build/libs/spring-front.jar spring-front.jar
+ ---> a7b7bbf726ed
+Step 8/9 : EXPOSE 8080
+ ---> Running in a2f715871d26
+Removing intermediate container a2f715871d26
+ ---> 3a3356283968
+Step 9/9 : CMD java -jar spring-front.jar
+ ---> Running in ba034aba438f
+Removing intermediate container ba034aba438f
+ ---> 6da31b8131d0
+Successfully built 6da31b8131d0
+Successfully tagged sbf0:latest
+````
+
+And then pushing it to the image registry (`docker push`)
+
+**Running the application**
+
+Simply run this command:
+
+````shell
+[root@pt-instance-7:~/rest]$ docker-compose up -d
+Creating network "app" with driver "bridge"
+Creating dd-agent-dogfood-jmx-di ... done
+Creating cass                    ... done
+Creating springback              ... done
+Creating springfront             ... done
+````
+
+Checking status
+
+````shell
+[root@pt-instance-7:~/rest]$ docker-compose ps
+         Name                        Command                  State                                                                Ports                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+cass                      docker-entrypoint.sh ./sta ...   Up             7000/tcp, 7001/tcp, 0.0.0.0:7199->7199/tcp,:::7199->7199/tcp, 0.0.0.0:9042->9042/tcp,:::9042->9042/tcp,                 
+                                                                          0.0.0.0:9160->9160/tcp,:::9160->9160/tcp                                                                                
+dd-agent-dogfood-jmx-di   /bin/entrypoint.sh               Up (healthy)   0.0.0.0:8125->8125/tcp,:::8125->8125/tcp, 8125/udp, 0.0.0.0:8126->8126/tcp,:::8126->8126/tcp                            
+springback                /bin/sh -c java -jar sprin ...   Exit 1                                                                                                                                 
+springfront               /bin/sh -c java -jar sprin ...   Up             0.0.0.0:8080->8080/tcp,:::8080->8080/tcp                
+````
+
+
+At this point you may see that springback exited. This is expected behavior as the cassandra database container wasn't ready yet by the time springback started.
+Starting springback one more time will just work fine by sending some requests to the 8080 port on the same host (`localhost`) 
+
+
+````shell
+[root@pt-instance-7:~/rest]$ curl localhost:8080/base/un/deux/trois
+Quote{type='success', value=Value{id=9, quote='Alea jacta est'}}
+
+````
+
+Now as all the components are up and running, and every pieces work well together. It's time to move on to the next step and set up dynamic instrumentation.
+
+
+
+### Dynamic Instrumentation (DI), Remote configuration (RC) and Source code integration (SCI) set-up
+
+**Injecting the propagation context**
+
+### Building the docker images and run the application - after phase
+
+**Extracting and splitting the payload**
+
+```java
+/* Extracing the payload */
+byte[] payload = msg.getPayload();
+
+/* Splitting the payload into byte arrays */
+byte[] traceid = new byte[Long.BYTES];
+byte[] parentid = new byte[Long.BYTES];
+byte[] messageReceived = new byte[payload.length - traceid.length - parentid.length];
+
+int tidlen = traceid.length;
+int pidlen = parentid.length;
+
+for (int i = 0; i < tidlen; i++) {
+   traceid[i] = payload[i];
+}
+
+for (int i = tidlen; i < tidlen + pidlen; i++) {
+   parentid[i - tidlen] = payload[i];
+}
+
+for (int i = tidlen + pidlen; i < payload.length; i++) {
+   messageReceived[i - tidlen - pidlen] = payload[i];
+}
+
+/* Extracting the content by generating two longs and the string message */
+ByteBuffer buftid = ByteBuffer.allocate(Long.BYTES);
+buftid.put(traceid);
+buftid.flip();//need flip
+long tid = buftid.getLong();
+
+ByteBuffer bufpid = ByteBuffer.allocate(Long.BYTES);
+bufpid.put(parentid);
+bufpid.flip();//need flip
+long pid = bufpid.getLong();
+
+/* Extracting the the message */
+String message = new String(messageReceived);
+
+/* Building the map to be used with tracer.extract() */
+Map<String, String> mapextract = new HashMap<>();
+
+mapextract.put("x-datadog-trace-id", Long.toString(tid));
+mapextract.put("x-datadog-parent-id", Long.toString(pid));
+mapextract.put("x-datadog-sampling-priority", "1");
+
 ```
 
 
+**Retrieving the parent span context and creating a child span**
 
-### _Checking connectivity from the internet to the front loadbalancer (springkafka service)_
+````java
+/* Retrieving the context of the parent span after */
+SpanContext parentSpan = tracer.extract(Format.Builtin.TEXT_MAP, new TextMapAdapter(mapextract));
 
-That applies if you run the application on a managed platform (ex EKS, AKS GKE).
-On GKE for instance, one would need to whitelist the IP address range that is allowed to access the LB.
-<br>By default no connection is allowed. Changing the Firewall settings might be necessary.
-Once done, we can test the application.
+/* Building the child span and nesting it under the parentspan */
+Span childspan = tracer.buildSpan("Subscribe").asChildOf(parentSpan).start();
+try (Scope scope = tracer.activateSpan(childspan)) {
+     childspan.setTag("service.name", "Downstream");
+     childspan.setTag("span.type", "custom");
+     childspan.setTag("resource.name", "mqtt.subscribe");
+     childspan.setTag("resource", "mqtt.subscribe");
+     childspan.setTag("customer_id", "45678");
+     Thread.sleep(2000L);
+     logger.info("Message received: " + messageReceived);
 
-### _Run the tests_
-
-Open a new terminal window and run the following curl command **multiple times**:
-
-```
-COMP10619:Kafka pejman.tabassomi$ curl 34.89.190.246:8088/test
-test
-```
-
-In this example this is the external IP of the loadbalancer (springkafkaprod) that is being used.
+} finally {
+     childspan.finish();
+}
+````
 
 
-### _Results_
 
-<p align="center">
-  <img src="img/img0.png" width="650" />
+### Starting and running the application
+
+````shell
+COMP10619:springboot-mqtt pejman.tabassomi$ gradle -b springbootmqtt/build.gradle build
+
+> Task :compileJava
+Note: /Users/pejman.tabassomi/mqtt/springboot-mqtt/springbootmqtt/src/main/java/com/datadoghq/pej/MessagingService.java uses unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 7.0.
+Use '--warning-mode all' to show the individual deprecation warnings.
+See https://docs.gradle.org/6.9.1/userguide/command_line_interface.html#sec:command_line_warnings
+
+BUILD SUCCESSFUL in 2s
+3 actionable tasks: 3 executed
+````
+
+At this stage, the artifact that will be produced (`springboot-mqtt-1.0.jar`) will be placed under the `springbootmqtt/build/libs` directory that gets created during the build process.
+
+### Build the docker images and run the application
+
+````shell
+COMP10619:springboot-mqtt pejman.tabassomi$ docker-compose up -d
+Creating network "mqtt-app" with driver "bridge"
+Building mqtt-broker
+[+] Building 1.8s (9/9) FINISHED                                                                                                                                                                 
+ => [internal] load build definition from Dockerfile.mqtt                                                                                                                                   0.0s
+ => => transferring dockerfile: 4.67kB                                                                                                                                                      0.0s
+ => [internal] load .dockerignore                                                                                                                                                           0.0s
+ => => transferring context: 2B                                                                                                                                                             0.0s
+ => [internal] load metadata for docker.io/library/alpine:3.14                                                                                                                              1.6s
+ => [1/4] FROM docker.io/library/alpine:3.14@sha256:06b5d462c92fc39303e6363c65e074559f8d6b1363250027ed5053557e3398c5                                                                        0.0s
+ => [internal] load build context                                                                                                                                                           0.1s
+ => => transferring context: 40.68kB                                                                                                                                                        0.1s
+ => CACHED [2/4] RUN set -x &&     apk --no-cache add --virtual build-deps         build-base         cmake         cjson-dev         gnupg         libressl-dev         linux-headers      0.0s
+ => CACHED [3/4] COPY mosquitto.conf /mosquitto/config/mosquitto.conf                                                                                                                       0.0s
+ => CACHED [4/4] COPY docker-entrypoint.sh mosquitto-no-auth.conf /                                                                                                                         0.0s
+ => exporting to image                                                                                                                                                                      0.0s
+ => => exporting layers                                                                                                                                                                     0.0s
+ => => writing image sha256:257b4a42658d9ed50696e31ff486381fd67339d87a93c2518d22bd4035112f82                                                                                                0.0s
+ => => naming to docker.io/mqtt/mosquitto:v0                                                                                                                                                0.0s
+
+Use 'docker scan' to run Snyk tests against images to find vulnerabilities and learn how to fix them
+WARNING: Image for service mqtt-broker was built because it did not already exist. To rebuild this image you must use `docker-compose build` or `docker-compose up --build`.
+Building springbootmqtt
+[+] Building 2.2s (7/7) FINISHED                                                                                                                                                                 
+ => [internal] load build definition from Dockerfile.spring                                                                                                                                 0.0s
+ => => transferring dockerfile: 227B                                                                                                                                                        0.0s
+ => [internal] load .dockerignore                                                                                                                                                           0.0s
+ => => transferring context: 2B                                                                                                                                                             0.0s
+ => [internal] load metadata for docker.io/adoptopenjdk/openjdk11:jdk-11.0.11_9-debian                                                                                                      1.1s
+ => CACHED [1/2] FROM docker.io/adoptopenjdk/openjdk11:jdk-11.0.11_9-debian@sha256:0140ebc813510bd628653d517ebf8ce23e80b6c7d7c899813584688940b56661                                         0.0s
+ => [internal] load build context                                                                                                                                                           0.6s
+ => => transferring context: 27.27MB                                                                                                                                                        0.6s
+ => [2/2] COPY springbootmqtt/build/libs/springboot-mqtt-1.0.jar springboot-mqtt-1.0.jar                                                                                                    0.1s
+ => exporting to image                                                                                                                                                                      0.2s
+ => => exporting layers                                                                                                                                                                     0.2s
+ => => writing image sha256:01073df8448cdb1093f377e005e7f854ca8d0db31453de67a30014e4b2b5ec05                                                                                                0.0s
+ => => naming to docker.io/mqtt/springmqtt:v0                                                                                                                                               0.0s
+
+Use 'docker scan' to run Snyk tests against images to find vulnerabilities and learn how to fix them
+WARNING: Image for service springbootmqtt was built because it did not already exist. To rebuild this image you must use `docker-compose build` or `docker-compose up --build`.
+Creating dd-agent-0     ... done
+Creating mosquitto  ... done
+Creating springbootmqtt ... done
+````
+
+At this stage our application is up and running and based on these three distinct services
+* MQTT Broker
+* Datadog Agent
+* Spring Boot service
+
+
+<p align="left">
+  <img src="img/Mqtt3.png" width="850" />
 </p>
 
 
+### Configuring probes & results
+
+1. In another terminal window run the following command, you should receive the answer `Ok`
+
+<pre style="font-size: 12px">
+COMP10619:springboot-mqtt pejman.tabassomi$ curl localhost:8080/Mqtt
+OK
+</pre>
+
+2. Then by simply checking the log output, we can verify that the message processing works well.
+
+````shell
+COMP10619:springboot-mqtt pejman.tabassomi$ docker logs springbootmqtt
+Picked up JAVA_TOOL_OPTIONS: -Ddd.env=dev -Ddd.tags=env:dev
+LOGBACK: No context given for c.q.l.core.rolling.SizeAndTimeBasedRollingPolicy@2128029086
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::        (v2.2.2.RELEASE)
+
+2022-04-17 19:12:02 [main] INFO  com.datadoghq.pej.Application - Starting Application on 4fc02e5563fe with PID 1 (/springboot-mqtt-1.0.jar started by root in /)
+2022-04-17 19:12:02 [main] INFO  com.datadoghq.pej.Application - No active profile set, falling back to default profiles: default
+2022-04-17 19:12:03 [main] INFO  o.s.i.c.DefaultConfiguringBeanFactoryPostProcessor - No bean named 'errorChannel' has been explicitly defined. Therefore, a default PublishSubscribeChannel will be created.
+...
+2022-04-17 19:12:05 [dd-task-scheduler] INFO  datadog.trace.core.StatusLogger - DATADOG TRACER CONFIGURATION {"version":"0.90.0~32708e53ec","os_name":"Linux","os_version":"5.10.76-linuxkit","architecture":"amd64","lang":"jvm","lang_version":"11.0.11","jvm_vendor":"AdoptOpenJDK","jvm_version":"11.0.11+9","java_class_version":"55.0","http_nonProxyHosts":"null","http_proxyHost":"null","enabled":true,"service":"springboot-mqtt-1.0","agent_url":"http://dd-agent-0:8126","agent_error":false,"debug":false,"analytics_enabled":false,"sampling_rules":[{},{}],"priority_sampling_enabled":true,"logs_correlation_enabled":true,"profiling_enabled":false,"appsec_enabled":false,"dd_version":"0.90.0~32708e53ec","health_checks_enabled":true,"configuration_file":"no config file present","runtime_id":"64aa406e-9953-49a6-981f-7223302bb915","logging_settings":{},"cws_enabled":false,"cws_tls_refresh":5000}
+2022-04-17 19:12:05 [main] INFO  o.s.s.c.ThreadPoolTaskExecutor - Initializing ExecutorService 'applicationTaskExecutor'
+2022-04-17 19:12:05 [main] INFO  o.s.s.c.ThreadPoolTaskScheduler - Initializing ExecutorService 'taskScheduler'
+2022-04-17 19:12:05 [main] INFO  o.s.i.endpoint.EventDrivenConsumer - Adding {logging-channel-adapter:_org.springframework.integration.errorLogger} as a subscriber to the 'errorChannel' channel
+2022-04-17 19:12:05 [main] INFO  o.s.i.c.PublishSubscribeChannel - Channel 'application.errorChannel' has 1 subscriber(s).
+2022-04-17 19:12:05 [main] INFO  o.s.i.endpoint.EventDrivenConsumer - started bean '_org.springframework.integration.errorLogger'
+2022-04-17 19:12:05 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port(s): 8080 (http) with context path ''
+2022-04-17 19:12:05 [main] INFO  com.datadoghq.pej.Application - Started Application in 4.079 seconds (JVM running for 4.918)
+2022-04-17 19:17:51 [http-nio-8080-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2022-04-17 19:17:51 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2022-04-17 19:17:51 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 16 ms
+2022-04-17 19:17:53 [http-nio-8080-exec-1] INFO  com.datadoghq.pej.MqttController - Publish/subscribe steps in Controller
+2022-04-17 19:17:53 [MQTT Call: COMP10619] INFO  com.datadoghq.pej.MessagingService - Message received: This is a sample message published to topic pejman/topic/event
+````
+
+In particular, the last line of these log events displays the message received.
+
+3. Checking the related APM trace in the Datadog UI
+
+<p align="left">
+  <img src="img/Mqtt2.png" width="850" />
+</p>
+
+### Conclusion
