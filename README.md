@@ -120,12 +120,12 @@ The main components of this project can be described as follows:
 
 ### Building the docker images and run the application - before phase
 
-**Building the images**
+**Building the images (Optional)**
 
 For the sake of effectiveness, you will find the required images preloaded into the following registry https://hub.docker.com/repositories/pejese </br>
-If you ever need to change the Dockerfiles and rebuild the images you may consider the following steps:
+But if you ever need to change the Dockerfiles and rebuild the images you may consider the following steps:
 
-First change the `image` key in the `docker-compose.yml` file to specify the your repository details.
+First change the `image` key in the `docker-compose.yml` file to specify your repository/registry details.
 
 
 ````shell
@@ -163,7 +163,38 @@ Successfully built 6da31b8131d0
 Successfully tagged sbf0:latest
 ````
 
-And then pushing it to the image registry (`docker push`)
+And then pushing it to the image registry (`docker push`). Make sure you are authenticated to your registry:
+
+````shell
+[root@pt-instance-7:~/rest]$ docker login -u=pejese -p=xxxxxxxxxxx
+WARNING! Using --password via the CLI is insecure. Use --password-stdin.
+WARNING! Your password will be stored unencrypted in /root/.docker/config.json.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+
+Login Succeeded
+````
+
+And then
+
+````shell
+[root@pt-instance-7:~/rest]$ docker push pejese/springfront:v0
+````
+
+Another way of building the images is shown below and relies on docker commands instead of the docker-compose ones:
+
+````shell
+[root@pt-instance-7:~/rest]$ docker build -f Dockerfiles/Dockerfile.cassandra -t pejese/cassandra:v0 .
+...
+[root@pt-instance-7:~/rest]$ docker login -u=pejese -p=xxxxxxxxxxx
+...
+[root@pt-instance-7:~/rest]$ docker push pejese/springfront:v0
+...
+[root@pt-instance-7:~/rest]$ docker run -it -p9042:9042/tcp -p9160:9160/tcp -p7199:7199/tcp -v /root/rest/Dockerfiles/cassandra.yaml:/opt/cassandra/conf/cassandra.yaml -d --name cass -h cassandra pejese/cassandra:v0
+````
+
+***Note***: For the cassandra image, you would need two additional files (`cassandra.yaml` and `start.sh`) which are respectively specifying the configuration details for the instance and preloading dummy data when running the image for the first time. 
+
 
 **Running the application**
 
@@ -208,58 +239,46 @@ Now as all the components are up and running, and every pieces work well togethe
 
 ### Dynamic Instrumentation (DI), Remote configuration (RC) and Source code integration (SCI) set-up
 
-**Injecting the propagation context**
+**Enabling Dynamic Instrumentation**
+
+Details can be found below:
+[Enable Dynamic Instrumentation]([https://www.google.com](https://docs.datadoghq.com/dynamic_instrumentation/enabling/java/?tab=commandarguments#installation)
+
+In summary you would to proceed as follows:
+
+_On the DD Agent side_
+1. Having the latest version of the DD Agent (7.39.1+)
+2. Having APM enabled (trace agent up and running and listening on port 8126)
+3. Having `Remote config` enabled (see further details in the following section)
+
+_On the tracing library side (java agent)_
+1. Download the `dd-java-agent.jar`
+2. Dynamic Instrumentation enabled by setting `-Ddd.dynamic.instrumentation.enabled` flag or `DD_DYNAMIC_INSTRUMENTATION_ENABLED` environment variable to `true`. Specify `dd.service`, `dd.env`, and `dd.version` Unified Service Tags so you can filter and group your probes and target active clients across these dimensions
+3. Enabling remote config also at the java agent level by setting the `-Ddd.remote_config.enabled` flag set to true or `DD_REMOTE_CONFIG_ENABLED` environment variable to `true`. (Cf further details in the following section)
+
+
+**Enabling Remote Config**
+In the previous section we surfaced the remote config details. Remote config is actually a feature that is common to several other functionalities than Dynamic Instrumentation. It is used alongside DI as probes set up are managed through the UI (This will be covered in the the next sections).
+
+Enabling remote config consists of 3 parts
+1. In the UI first (https://app.datadoghq.com/organization-settings/remote-config) where a `remote config key` needs to be generated
+2. At the DD Agent level by enabling two env variables (the key being generated in the UI) 
+```
+DD_REMOTE_CONFIGURATION_ENABLED=true
+DD_REMOTE_CONFIGURATION_KEY=DDRCM_QORW64THZYAAGQKLUJSGHLDVOMYS44DSN5SC4ZDPM6RWWZLZ3EUDKZRYGQ4DSN5SC4ZDPM6RWWZLZ3EUDKNJSMVSDAMRTGNTDKNDCGA4DOMRYHA2A
+```
+3. At the tracing library level by setting the `-Ddd.remote_config.enabled` flag set to true or `DD_REMOTE_CONFIG_ENABLED` environment variable to `true`
+
+When remote config is enabled in the UI, you should see something along the lines of
+
+<p align="left">
+  <img src="img/RCenabled.png" width="850" />
+</p>
+
+
 
 ### Building the docker images and run the application - after phase
 
-**Extracting and splitting the payload**
-
-```java
-/* Extracing the payload */
-byte[] payload = msg.getPayload();
-
-/* Splitting the payload into byte arrays */
-byte[] traceid = new byte[Long.BYTES];
-byte[] parentid = new byte[Long.BYTES];
-byte[] messageReceived = new byte[payload.length - traceid.length - parentid.length];
-
-int tidlen = traceid.length;
-int pidlen = parentid.length;
-
-for (int i = 0; i < tidlen; i++) {
-   traceid[i] = payload[i];
-}
-
-for (int i = tidlen; i < tidlen + pidlen; i++) {
-   parentid[i - tidlen] = payload[i];
-}
-
-for (int i = tidlen + pidlen; i < payload.length; i++) {
-   messageReceived[i - tidlen - pidlen] = payload[i];
-}
-
-/* Extracting the content by generating two longs and the string message */
-ByteBuffer buftid = ByteBuffer.allocate(Long.BYTES);
-buftid.put(traceid);
-buftid.flip();//need flip
-long tid = buftid.getLong();
-
-ByteBuffer bufpid = ByteBuffer.allocate(Long.BYTES);
-bufpid.put(parentid);
-bufpid.flip();//need flip
-long pid = bufpid.getLong();
-
-/* Extracting the the message */
-String message = new String(messageReceived);
-
-/* Building the map to be used with tracer.extract() */
-Map<String, String> mapextract = new HashMap<>();
-
-mapextract.put("x-datadog-trace-id", Long.toString(tid));
-mapextract.put("x-datadog-parent-id", Long.toString(pid));
-mapextract.put("x-datadog-sampling-priority", "1");
-
-```
 
 
 **Retrieving the parent span context and creating a child span**
