@@ -27,7 +27,7 @@ In each section, we'll describe the required steps to take in order to reach the
 The purpose of this lab is to help familiarizing and practising the various steps required to set up and use the Dynamic Instrumentation feature.
 
 <p align="left">
-  <img src="img/Mqtt1.png" width="850" />
+  <img src="img/diagram.png" width="1250" />
 </p>
 
 ### Pre-requisites
