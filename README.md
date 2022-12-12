@@ -11,10 +11,11 @@ The sections of this tutorial are structured as follows
 * Clone the repository
 * Directory structure of the project
 * Overview of the application
-* Building the docker images and run the application - before phase
+* Building the docker images (optional) 
+* Run the application - before configuration phase
 * Dynamic Instrumentation (DI), Remote configuration (RC) and Source code integration (SCI) set-up
-* Building the docker images and run the application - after phase
-* Starting and running the application
+* Run the application - after configuration phase
+* Testing the application
 * Configuring probes & results
 * Conclusion
 
@@ -242,7 +243,7 @@ Now as all the components are up and running, and every pieces work well togethe
 **Enabling Dynamic Instrumentation**
 
 Details can be found below:
-[Enable Dynamic Instrumentation]([https://www.google.com](https://docs.datadoghq.com/dynamic_instrumentation/enabling/java/?tab=commandarguments#installation)
+[Enable Dynamic Instrumentation](https://docs.datadoghq.com/dynamic_instrumentation/enabling/java/?tab=commandarguments#installation)
 
 In summary you would to proceed as follows:
 
@@ -262,7 +263,7 @@ In the previous section we surfaced the remote config details. Remote config is 
 
 Enabling remote config consists of 3 parts
 1. In the UI first (https://app.datadoghq.com/organization-settings/remote-config) where a `remote config key` needs to be generated
-2. At the DD Agent level by enabling two env variables (the key being generated in the UI) 
+2. At the DD Agent level by enabling two env variables (the key being generated in the UI)
 ```
 DD_REMOTE_CONFIGURATION_ENABLED=true
 DD_REMOTE_CONFIGURATION_KEY=DDRCM_QORW64THZYAAGQKLUJSGHLDVOMYS44DSN5SC4ZDPM6RWWZLZ3EUDKZRYGQ4DSN5SC4ZDPM6RWWZLZ3EUDKNJSMVSDAMRTGNTDKNDCGA4DOMRYHA2A
@@ -272,166 +273,33 @@ DD_REMOTE_CONFIGURATION_KEY=DDRCM_QORW64THZYAAGQKLUJSGHLDVOMYS44DSN5SC4ZDPM6RWWZ
 When remote config is enabled in the UI, you should see something along the lines of
 
 <p align="left">
-  <img src="img/RCenabled.png" width="850" />
+  <img src="img/RCenabled.png" width="650" />
 </p>
 
 
+**Enabling Source code integration**
 
-### Building the docker images and run the application - after phase
+The two first sections are the bare minimum required to be able to use the DI feature. And we are now ready to configure probes and review in details how they can be used.
+But before that we will also enable `Source Code Integration` that will facilitate much more probe configuration details. The purpose of SCI is link a project repository (ex GitHub) and allow access to the source code details to configure probes in the DI section of the UI.  
 
+For further details
+https://docs.datadoghq.com/integrations/guide/source-code-integration/?tab=dockerruntime#links-to-git
 
-
-**Retrieving the parent span context and creating a child span**
-
-````java
-/* Retrieving the context of the parent span after */
-SpanContext parentSpan = tracer.extract(Format.Builtin.TEXT_MAP, new TextMapAdapter(mapextract));
-
-/* Building the child span and nesting it under the parentspan */
-Span childspan = tracer.buildSpan("Subscribe").asChildOf(parentSpan).start();
-try (Scope scope = tracer.activateSpan(childspan)) {
-     childspan.setTag("service.name", "Downstream");
-     childspan.setTag("span.type", "custom");
-     childspan.setTag("resource.name", "mqtt.subscribe");
-     childspan.setTag("resource", "mqtt.subscribe");
-     childspan.setTag("customer_id", "45678");
-     Thread.sleep(2000L);
-     logger.info("Message received: " + messageReceived);
-
-} finally {
-     childspan.finish();
-}
-````
-
-
-
-### Starting and running the application
-
-````shell
-COMP10619:springboot-mqtt pejman.tabassomi$ gradle -b springbootmqtt/build.gradle build
-
-> Task :compileJava
-Note: /Users/pejman.tabassomi/mqtt/springboot-mqtt/springbootmqtt/src/main/java/com/datadoghq/pej/MessagingService.java uses unchecked or unsafe operations.
-Note: Recompile with -Xlint:unchecked for details.
-
-Deprecated Gradle features were used in this build, making it incompatible with Gradle 7.0.
-Use '--warning-mode all' to show the individual deprecation warnings.
-See https://docs.gradle.org/6.9.1/userguide/command_line_interface.html#sec:command_line_warnings
-
-BUILD SUCCESSFUL in 2s
-3 actionable tasks: 3 executed
-````
-
-At this stage, the artifact that will be produced (`springboot-mqtt-1.0.jar`) will be placed under the `springbootmqtt/build/libs` directory that gets created during the build process.
-
-### Build the docker images and run the application
-
-````shell
-COMP10619:springboot-mqtt pejman.tabassomi$ docker-compose up -d
-Creating network "mqtt-app" with driver "bridge"
-Building mqtt-broker
-[+] Building 1.8s (9/9) FINISHED                                                                                                                                                                 
- => [internal] load build definition from Dockerfile.mqtt                                                                                                                                   0.0s
- => => transferring dockerfile: 4.67kB                                                                                                                                                      0.0s
- => [internal] load .dockerignore                                                                                                                                                           0.0s
- => => transferring context: 2B                                                                                                                                                             0.0s
- => [internal] load metadata for docker.io/library/alpine:3.14                                                                                                                              1.6s
- => [1/4] FROM docker.io/library/alpine:3.14@sha256:06b5d462c92fc39303e6363c65e074559f8d6b1363250027ed5053557e3398c5                                                                        0.0s
- => [internal] load build context                                                                                                                                                           0.1s
- => => transferring context: 40.68kB                                                                                                                                                        0.1s
- => CACHED [2/4] RUN set -x &&     apk --no-cache add --virtual build-deps         build-base         cmake         cjson-dev         gnupg         libressl-dev         linux-headers      0.0s
- => CACHED [3/4] COPY mosquitto.conf /mosquitto/config/mosquitto.conf                                                                                                                       0.0s
- => CACHED [4/4] COPY docker-entrypoint.sh mosquitto-no-auth.conf /                                                                                                                         0.0s
- => exporting to image                                                                                                                                                                      0.0s
- => => exporting layers                                                                                                                                                                     0.0s
- => => writing image sha256:257b4a42658d9ed50696e31ff486381fd67339d87a93c2518d22bd4035112f82                                                                                                0.0s
- => => naming to docker.io/mqtt/mosquitto:v0                                                                                                                                                0.0s
-
-Use 'docker scan' to run Snyk tests against images to find vulnerabilities and learn how to fix them
-WARNING: Image for service mqtt-broker was built because it did not already exist. To rebuild this image you must use `docker-compose build` or `docker-compose up --build`.
-Building springbootmqtt
-[+] Building 2.2s (7/7) FINISHED                                                                                                                                                                 
- => [internal] load build definition from Dockerfile.spring                                                                                                                                 0.0s
- => => transferring dockerfile: 227B                                                                                                                                                        0.0s
- => [internal] load .dockerignore                                                                                                                                                           0.0s
- => => transferring context: 2B                                                                                                                                                             0.0s
- => [internal] load metadata for docker.io/adoptopenjdk/openjdk11:jdk-11.0.11_9-debian                                                                                                      1.1s
- => CACHED [1/2] FROM docker.io/adoptopenjdk/openjdk11:jdk-11.0.11_9-debian@sha256:0140ebc813510bd628653d517ebf8ce23e80b6c7d7c899813584688940b56661                                         0.0s
- => [internal] load build context                                                                                                                                                           0.6s
- => => transferring context: 27.27MB                                                                                                                                                        0.6s
- => [2/2] COPY springbootmqtt/build/libs/springboot-mqtt-1.0.jar springboot-mqtt-1.0.jar                                                                                                    0.1s
- => exporting to image                                                                                                                                                                      0.2s
- => => exporting layers                                                                                                                                                                     0.2s
- => => writing image sha256:01073df8448cdb1093f377e005e7f854ca8d0db31453de67a30014e4b2b5ec05                                                                                                0.0s
- => => naming to docker.io/mqtt/springmqtt:v0                                                                                                                                               0.0s
-
-Use 'docker scan' to run Snyk tests against images to find vulnerabilities and learn how to fix them
-WARNING: Image for service springbootmqtt was built because it did not already exist. To rebuild this image you must use `docker-compose build` or `docker-compose up --build`.
-Creating dd-agent-0     ... done
-Creating mosquitto  ... done
-Creating springbootmqtt ... done
-````
-
-At this stage our application is up and running and based on these three distinct services
-* MQTT Broker
-* Datadog Agent
-* Spring Boot service
-
-
+1. Push the two microservices code to your github account (`springfront` & `springback`)
 <p align="left">
-  <img src="img/Mqtt3.png" width="850" />
+  <img src="img/ghexample.png" width="650" />
 </p>
 
+
+2. The previous step can be skipped and you can move on and use the following details.
+
+
+
+### Run the application - after configuration phase
+
+### Testing the application and generating load
 
 ### Configuring probes & results
-
-1. In another terminal window run the following command, you should receive the answer `Ok`
-
-<pre style="font-size: 12px">
-COMP10619:springboot-mqtt pejman.tabassomi$ curl localhost:8080/Mqtt
-OK
-</pre>
-
-2. Then by simply checking the log output, we can verify that the message processing works well.
-
-````shell
-COMP10619:springboot-mqtt pejman.tabassomi$ docker logs springbootmqtt
-Picked up JAVA_TOOL_OPTIONS: -Ddd.env=dev -Ddd.tags=env:dev
-LOGBACK: No context given for c.q.l.core.rolling.SizeAndTimeBasedRollingPolicy@2128029086
-
-  .   ____          _            __ _ _
- /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
-( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
- \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
-  '  |____| .__|_| |_|_| |_\__, | / / / /
- =========|_|==============|___/=/_/_/_/
- :: Spring Boot ::        (v2.2.2.RELEASE)
-
-2022-04-17 19:12:02 [main] INFO  com.datadoghq.pej.Application - Starting Application on 4fc02e5563fe with PID 1 (/springboot-mqtt-1.0.jar started by root in /)
-2022-04-17 19:12:02 [main] INFO  com.datadoghq.pej.Application - No active profile set, falling back to default profiles: default
-2022-04-17 19:12:03 [main] INFO  o.s.i.c.DefaultConfiguringBeanFactoryPostProcessor - No bean named 'errorChannel' has been explicitly defined. Therefore, a default PublishSubscribeChannel will be created.
-...
-2022-04-17 19:12:05 [dd-task-scheduler] INFO  datadog.trace.core.StatusLogger - DATADOG TRACER CONFIGURATION {"version":"0.90.0~32708e53ec","os_name":"Linux","os_version":"5.10.76-linuxkit","architecture":"amd64","lang":"jvm","lang_version":"11.0.11","jvm_vendor":"AdoptOpenJDK","jvm_version":"11.0.11+9","java_class_version":"55.0","http_nonProxyHosts":"null","http_proxyHost":"null","enabled":true,"service":"springboot-mqtt-1.0","agent_url":"http://dd-agent-0:8126","agent_error":false,"debug":false,"analytics_enabled":false,"sampling_rules":[{},{}],"priority_sampling_enabled":true,"logs_correlation_enabled":true,"profiling_enabled":false,"appsec_enabled":false,"dd_version":"0.90.0~32708e53ec","health_checks_enabled":true,"configuration_file":"no config file present","runtime_id":"64aa406e-9953-49a6-981f-7223302bb915","logging_settings":{},"cws_enabled":false,"cws_tls_refresh":5000}
-2022-04-17 19:12:05 [main] INFO  o.s.s.c.ThreadPoolTaskExecutor - Initializing ExecutorService 'applicationTaskExecutor'
-2022-04-17 19:12:05 [main] INFO  o.s.s.c.ThreadPoolTaskScheduler - Initializing ExecutorService 'taskScheduler'
-2022-04-17 19:12:05 [main] INFO  o.s.i.endpoint.EventDrivenConsumer - Adding {logging-channel-adapter:_org.springframework.integration.errorLogger} as a subscriber to the 'errorChannel' channel
-2022-04-17 19:12:05 [main] INFO  o.s.i.c.PublishSubscribeChannel - Channel 'application.errorChannel' has 1 subscriber(s).
-2022-04-17 19:12:05 [main] INFO  o.s.i.endpoint.EventDrivenConsumer - started bean '_org.springframework.integration.errorLogger'
-2022-04-17 19:12:05 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port(s): 8080 (http) with context path ''
-2022-04-17 19:12:05 [main] INFO  com.datadoghq.pej.Application - Started Application in 4.079 seconds (JVM running for 4.918)
-2022-04-17 19:17:51 [http-nio-8080-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
-2022-04-17 19:17:51 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
-2022-04-17 19:17:51 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 16 ms
-2022-04-17 19:17:53 [http-nio-8080-exec-1] INFO  com.datadoghq.pej.MqttController - Publish/subscribe steps in Controller
-2022-04-17 19:17:53 [MQTT Call: COMP10619] INFO  com.datadoghq.pej.MessagingService - Message received: This is a sample message published to topic pejman/topic/event
-````
-
-In particular, the last line of these log events displays the message received.
-
-3. Checking the related APM trace in the Datadog UI
-
-<p align="left">
-  <img src="img/Mqtt2.png" width="850" />
-</p>
+https://docs.datadoghq.com/dynamic_instrumentation/?tab=configurationyaml#explore-dynamic-instrumentation
 
 ### Conclusion
