@@ -352,9 +352,31 @@ DD_REMOTE_CONFIGURATION_KEY=DDRCM_QORW64THZYAAGQKLUJSGHLDVOMYS44DSN5SC4ZDPM6RWWZ
 
 ### Run the application - after configuration phase
 
+Once the changes above have been applied, all the services can be reloaded by using the same instructions specified [Here](#runapp)
+
 ### Testing the application and generating load
+
+Generating the load simply consists of using the same curl command specified [Here](#runapp)
+
+<p align="left">
+  <img src="img/runload.png" width="650" />
+</p>
+
 
 ### Configuring probes & results
 https://docs.datadoghq.com/dynamic_instrumentation/?tab=configurationyaml#explore-dynamic-instrumentation
+
+Configuring probes are quite straightfoward when all the pieces are in place 
+
++ snapshot probe example
+<p align="left">
+  <img src="img/probeconf1.png" width="650" />
+</p>
+
++ metric probe example
+<p align="left">
+  <img src="img/probeconf2.png" width="650" />
+</p>
+
 
 ### Conclusion
