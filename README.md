@@ -197,7 +197,7 @@ Another way of building the images is shown below and relies on docker commands 
 ***Note***: For the cassandra image, you would need two additional files (`cassandra.yaml` and `start.sh`) which are respectively specifying the configuration details for the instance and preloading dummy data when running the image for the first time. 
 
 
-**Running the application**
+**Running <a name="runapp">the</a> application**
 
 Simply run this command:
 
@@ -279,19 +279,39 @@ When remote config is enabled in the UI, you should see something along the line
 
 **Enabling Source code integration**
 
-The two first sections are the bare minimum required to be able to use the DI feature. And we are now ready to configure probes and review in details how they can be used.
-But before that we will also enable `Source Code Integration` that will facilitate much more probe configuration details. The purpose of SCI is link a project repository (ex GitHub) and allow access to the source code details to configure probes in the DI section of the UI.  
+The two first sections are the bare minimum required to be able to use the DI feature. 
+And we are now ready to configure probes and review in details how they can be used.
+
+But before that we will also enable `Source Code Integration` that will facilitate much more probe configuration details. The purpose of SCI is to link a project repository (ex GitHub) and allow access to the source code details to configure probes in the DI section of the UI.
+
+SCI relies on the DD GitHub Integration
 
 For further details
-https://docs.datadoghq.com/integrations/guide/source-code-integration/?tab=dockerruntime#links-to-git
+[Enable Source Code Integration](https://docs.datadoghq.com/integrations/guide/source-code-integration/?tab=dockerruntime#links-to-git)
 
-1. Push the two microservices code to your github account (`springfront` & `springback`)
+
+1. Push the two microservices code to your github account (`springfront` & `springback`). You should have two distinct repos, see example below for one of the projects. 
+<p align="left">
+  <img src="img/ghexample.png" width="650" />
+</p>
+
+2. Start the services and run some traffic (See above [Above](#runapp))
+
+3. Once done, save both the git `commit.sha` and `repository_url` for the two projetcs above.
+You should have something equivalent to
+
+`git.commit.sha:17c7e82807d1ca54ff5aaf032a5aca2b52beab3f`and `git.repository_url:github.com/ptabasso2/spring-back` at hand for the `springback` project.
+
+4. Go to https://app.datadoghq.com/source-code/setup/apm and you will guided through the configuration of the GitHub Integration.
+There will be two parts in this process
+* Creating the GitHub App
+* Installing and configuring the GitHub App
+
 <p align="left">
   <img src="img/ghexample.png" width="650" />
 </p>
 
 
-2. The previous step can be skipped and you can move on and use the following details.
 
 
 
