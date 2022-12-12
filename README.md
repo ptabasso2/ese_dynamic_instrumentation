@@ -295,24 +295,59 @@ For further details
   <img src="img/ghexample.png" width="650" />
 </p>
 
-2. Start the services and run some traffic (See above [Above](#runapp))
-
-3. Once done, save both the git `commit.sha` and `repository_url` for the two projetcs above.
+2. Once done, save both the git `commit.sha` and `repository_url` for the two projetcs above.
 You should have something equivalent to
 
 `git.commit.sha:17c7e82807d1ca54ff5aaf032a5aca2b52beab3f`and `git.repository_url:github.com/ptabasso2/spring-back` at hand for the `springback` project.
 
+3. Start the services and run some traffic (See above [Above](#runapp))
+
 4. Go to https://app.datadoghq.com/source-code/setup/apm and you will guided through the configuration of the GitHub Integration.
-There will be two parts in this process
+After a short while, in step 1 at the top of the in-app instructions, pick the `springfront` service 
+
+There will be four parts in this process
 * Creating the GitHub App
+
+<p align="left">
+  <img src="img/SCI1.png" width="650" />
+</p>
+
 * Installing and configuring the GitHub App
 
 <p align="left">
-  <img src="img/ghexample.png" width="650" />
+  <img src="img/SCI2.png" width="650" />
 </p>
 
+* Manage permissions for the GitHUb App
 
+<p align="left">
+  <img src="img/SCI3.png" width="650" />
+</p>
 
+Once you are done with that part, the last remaining bit is the tracing library configuration to get it working. This is also described in the docs 
+[Source Code Integration - Configuration](https://docs.datadoghq.com/integrations/guide/source-code-integration/?tab=dockerruntime#configuration)
+
+But in a nutshell, the two properties above (`git.commit.sha`and `git.repository_url`) are required by the tracing libraries and should be set as tags.
+
+A syntax example you might want to consider when using the Java agent is the following. Environment variables can be used instead.
+
+````java
+-Ddd.tags=git.commit.sha:9383abbd845cec77c4c65873f6d981bc51d1ead7,git.repository_url:github.com/ptabasso2/spring-front
+````
+
+**Summary of the configuration steps**
+
+In order to enable these three features, you will need to update the `docker-compose.yml` file and use the Datadog UI to
++ Enable remote config in the UI: https://app.datadoghq.com/organization-settings/remote-config
++ Change the DD Agent configuration by adding these two env variables to enable Remote config
+```
+DD_REMOTE_CONFIGURATION_ENABLED=true
+DD_REMOTE_CONFIGURATION_KEY=DDRCM_QORW64THZYAAGQKLUJSGHLDVOMYS44DSN5SC4ZDPM6RWWZLZ3EUDKZRYGQ4DSN5SC4ZDPM6RWWZLZ3EUDKNJSMVSDAMRTGNTDKNDCGA4DOMRYHA2A
+```
++ Enable both dynamic instrumentation and remote config at the tracing level (`-Ddd.dynamic.instrumentation.enabled=true`, `-Ddd.remote_config.enabled=true` or by using the corresponding env variables form)
++ Create and install a GitHub app (https://app.datadoghq.com/source-code/setup/apm) to link with source code
++ Manage permissions of the GitHub app
++ Use the commit hash and github url as tags for the tracing library
 
 
 ### Run the application - after configuration phase
