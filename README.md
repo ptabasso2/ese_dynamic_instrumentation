@@ -115,7 +115,7 @@ COMP10619:ese pejman.tabassomi$ tree
 ```
 
 The main components of this project can be described as follows:
-+ Two distinct microservices (`springfront` and `springback`) communicating with each other through Rest calls </br>
++ Two distinct microservices (`springfront` and `springback`) communicating with each other through Rest calls and a `cassandra` database accessed by the backend microservice `springback`</br>
 + The various docker files needed to build the images and the docker-compose configuration to spin up the four containers (`dd-agent`, `springfront`, `springback` and `cassandra`).
 
 
@@ -126,7 +126,7 @@ The main components of this project can be described as follows:
 For the sake of effectiveness, you will find the required images preloaded into the following registry https://hub.docker.com/repositories/pejese </br>
 But if you ever need to change the Dockerfiles and rebuild the images you may consider the following steps:
 
-First change the `image` key in the `docker-compose.yml` file to specify your repository/registry details.
+First change the `image` key in the `docker-compose.yml` file to specify your repository/registry details. And then run the build command as follows
 
 
 ````shell
@@ -164,7 +164,9 @@ Successfully built 6da31b8131d0
 Successfully tagged sbf0:latest
 ````
 
-And then pushing it to the image registry (`docker push`). Make sure you are authenticated to your registry:
+And then pushing it to the image registry (`docker push`). 
+
+Make sure you are authenticated to your registry through the `docker login`command.
 
 ````shell
 [root@pt-instance-7:~/rest]$ docker login -u=pejese -p=xxxxxxxxxxx
@@ -224,8 +226,8 @@ springfront               /bin/sh -c java -jar sprin ...   Up             0.0.0.
 ````
 
 
-At this point you may see that springback exited. This is expected behavior as the cassandra database container wasn't ready yet by the time springback started.
-Starting springback one more time will just work fine by sending some requests to the 8080 port on the same host (`localhost`) 
+At this point you may see that `springback` exited. This is expected behavior as the `cassandra` database container wasn't ready yet by the time `springback` started.
+Starting `springback` one more time will just work fine by sending some requests to the `8080` port on the same host (`localhost`) 
 
 
 ````shell
@@ -236,6 +238,12 @@ Quote{type='success', value=Value{id=9, quote='Alea jacta est'}}
 
 Now as all the components are up and running, and every pieces work well together. It's time to move on to the next step and set up dynamic instrumentation.
 
+When you are done with those services, you can tear them down by running this command
+
+````shell
+[root@pt-instance-7:~/rest]$ docker-compose down
+...
+````
 
 
 ### Dynamic Instrumentation (DI), Remote configuration (RC) and Source code integration (SCI) set-up
@@ -245,15 +253,16 @@ Now as all the components are up and running, and every pieces work well togethe
 Details can be found below:
 [Enable Dynamic Instrumentation](https://docs.datadoghq.com/dynamic_instrumentation/enabling/java/?tab=commandarguments#installation)
 
-In summary you would to proceed as follows:
+This set up will have to be done by modifying the provided `docker-compose.yml` file.<br> 
+Here are some the tasks you will need to accomplish
 
 _On the DD Agent side_
 1. Having the latest version of the DD Agent (7.39.1+)
-2. Having APM enabled (trace agent up and running and listening on port 8126)
+2. Having APM enabled (trace agent up and running and listening on port 8126 - _UDS is not yet supported_ -)
 3. Having `Remote config` enabled (see further details in the following section)
 
 _On the tracing library side (java agent)_
-1. Download the `dd-java-agent.jar`
+1. Use the `dd-java-agent.jar` provided with the project or download a newer version
 2. Dynamic Instrumentation enabled by setting `-Ddd.dynamic.instrumentation.enabled` flag or `DD_DYNAMIC_INSTRUMENTATION_ENABLED` environment variable to `true`. Specify `dd.service`, `dd.env`, and `dd.version` Unified Service Tags so you can filter and group your probes and target active clients across these dimensions
 3. Enabling remote config also at the java agent level by setting the `-Ddd.remote_config.enabled` flag set to true or `DD_REMOTE_CONFIG_ENABLED` environment variable to `true`. (Cf further details in the following section)
 
@@ -284,7 +293,7 @@ And we are now ready to configure probes and review in details how they can be u
 
 But before that we will also enable `Source Code Integration` that will facilitate much more probe configuration details. The purpose of SCI is to link a project repository (ex GitHub) and allow access to the source code details to configure probes in the DI section of the UI.
 
-SCI relies on the DD GitHub Integration
+SCI relies on the ***GitHub Integration***
 
 For further details
 [Enable Source Code Integration](https://docs.datadoghq.com/integrations/guide/source-code-integration/?tab=dockerruntime#links-to-git)
@@ -302,7 +311,7 @@ You should have something equivalent to
 
 3. Start the services and run some traffic (See above [Above](#runapp))
 
-4. Go to https://app.datadoghq.com/source-code/setup/apm and you will guided through the configuration of the GitHub Integration.
+4. Go to https://app.datadoghq.com/source-code/setup/apm which will guide you through the configuration of the GitHub Integration.
 After a short while, in step 1 at the top of the in-app instructions, pick the `springfront` service 
 
 There will be four parts in this process
@@ -329,7 +338,7 @@ Once you are done with that part, the last remaining bit is the tracing library 
 
 But in a nutshell, the two properties above (`git.commit.sha`and `git.repository_url`) are required by the tracing libraries and should be set as tags.
 
-A syntax example you might want to consider when using the Java agent is the following. Environment variables can be used instead.
+A syntax example based on java system properties you might want to consider when using the Java agent is here under. Environment variables can be used alternatively.
 
 ````java
 -Ddd.tags=git.commit.sha:9383abbd845cec77c4c65873f6d981bc51d1ead7,git.repository_url:github.com/ptabasso2/spring-front
@@ -379,4 +388,4 @@ Configuring probes are quite straightfoward when all the pieces are in place
 </p>
 
 
-### Conclusion
+### End
