@@ -27,31 +27,12 @@ services:
       - app
    
 
-  cass:
-    build:
-      context: .
-      dockerfile: Dockerfiles/Dockerfile.cassandra
-    ports:
-     - "9042:9042"
-     - "9160:9160"
-     - "7199:7199"
-    volumes:
-      - $PWD/Dockerfiles/cassandra.yaml:/opt/cassandra/conf/cassandra.yaml
-    depends_on:
-      - "dd-agent-dogfood-jmx-di"
-    container_name: cass
-    image: pejese/cassandra:v1
-    hostname: cassandra
-    networks:
-      - app
-
-
   springfront:
     build:
       context: .
       dockerfile: Dockerfiles/Dockerfile.springfront
     container_name: springfront
-    image: 'pejese/springfront:v0'
+    image: 'pejese/springfront:v1'
     environment:
             - JAVA_TOOL_OPTIONS=-javaagent:/root/dd-java-agent.jar -Ddd.agent.host=dd-agent-dogfood-jmx-di -Ddd.service=springfront -Ddd.env=dev -Ddd.version=12 -Ddd.trace.sample.rate=1 -Ddd.logs.injection=true -Ddd.profiling.enabled=true -XX:FlightRecorderOptions=stackdepth=256 -Ddd.trace.http.client.split-by-domain=true -Ddd.tags=env:dev
             - URL=http://springback:8088
@@ -60,27 +41,6 @@ services:
           - "8080:8080"
     volumes:
       - $PWD/dd-java-agent.jar:/root/dd-java-agent.jar
-    depends_on:
-      - "cass"
-    networks:
-      - app
-
-
-  springback:
-    build:
-      context: .
-      dockerfile: Dockerfiles/Dockerfile.springback
-    container_name: springback
-    image: 'pejese/springback:v0'
-    environment:
-            - JAVA_TOOL_OPTIONS=-javaagent:/root/dd-java-agent.jar -Ddd.agent.host=dd-agent-dogfood-jmx-di -Ddd.service=springback -Ddd.env=dev -Ddd.version=12 -Ddd.trace.sample.rate=1 -Ddd.logs.injection=true -Ddd.profiling.enabled=true -XX:FlightRecorderOptions=stackdepth=256 -Ddd.trace.http.client.split-by-domain=true -Ddd.tags=env:dev
-    hostname: springback
-    ports:
-          - "8088:8088"
-    volumes:
-      - $PWD/dd-java-agent.jar:/root/dd-java-agent.jar
-    depends_on:
-      - "cass"
     networks:
       - app
 
